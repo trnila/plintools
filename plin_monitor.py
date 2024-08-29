@@ -1,87 +1,132 @@
 #!/usr/bin/env python3
+from asyncio import events
+import contextvars
+import functools
+from textual.keys import Keys
+from textual.widget import Widget
+from textual.app import App, ComposeResult, Binding
+from textual.widgets import Footer, DataTable, Label
 from plin.device import PLIN
 from plin.enums import PLINMode
 import ldfparser
-import curses
 import time
 import argparse
-
-p = argparse.ArgumentParser()
-p.add_argument('ldf_path')
-p.add_argument('device')
-args = p.parse_args()
+import asyncio
 
 
-class PlinMonitor:
-    def __init__(self, stdscr, ldf, plin):
-        self.stdscr = stdscr
-        self.ldf = ldf
+async def to_thread(func, /, *args, **kwargs):
+    loop = events.get_running_loop()
+    ctx = contextvars.copy_context()
+    func_call = functools.partial(ctx.run, func, *args, **kwargs)
+    return await loop.run_in_executor(None, func_call)
+
+
+class PlinMonitor(App[None]):
+    CSS_PATH = "plin_monitor.tcss"
+    BINDINGS = (
+        Binding(Keys.ControlSpace, "toggle_all_signals()", "toggle all signals"),
+        Binding("space", "toggle_signal", "toggle signals"),
+        Binding(Keys.Escape, "quit", "quit"),
+    )
+
+    def __init__(self):
+        super().__init__()
+        self.toggle_all_signals = False
+
+    def action_toggle_signal(self):
+        table = self.focused.parent.query_one("DataTable")
+        table.display = not table.display
+
+    def action_toggle_all_signals(self):
+        for table in self.tables.values():
+            table.display = self.toggle_all_signals
+        self.toggle_all_signals = not self.toggle_all_signals
+
+    def compose(self) -> ComposeResult:
+        yield Footer()
+
+        self.bg_task = asyncio.create_task(to_thread(self.pump_frames))
+
+    def pump_frames(self):
         self.plin = plin
-        self.row = 0
-    
-    def run(self):
-        longest_signal = max([len(s.name) for s in self.ldf.signals])
-
-        self.stdscr.keypad(True)
-        self.stdscr.nodelay(True)
-        curses.use_default_colors()
-        curses.curs_set(False)
-        curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_GREEN)
-        curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_CYAN)
-        curses.init_pair(3, curses.COLOR_CYAN, curses.COLOR_BLACK)
-        curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLACK)
-
-        messages = {}
-        while True:
+        self.ldf = ldf
+        self.tables = {}
+        self.labels = {}
+        self.cache = {}
+        try:
             while True:
-                result = self.plin.read(block=False)
-                if not result:
-                    break
+                frames = {}
+                while True:
+                    result = self.plin.read(block=False)
+                    if not result:
+                        break
 
-                result.ts_us = int(time.time_ns() / 1000)
-                messages[result.id] = result
+                    result.ts_us = int(time.time_ns() / 1000)
+                    frames[result.id] = result
 
-            self.stdscr.erase()
-            self.row = 0
+                self.call_from_thread(self.update_frames, frames)
+                time.sleep(0.05)
+        except Exception as e:
+            self._handle_exception(e)
 
-            for id, result in messages.items():
-                data = bytes(result.data)
-                frame = self.ldf.get_frame(id)
-                decoded = frame.decode(data)
-                decoded_raw = frame.decode_raw(data)
+    def update_frames(self, messages):
+        for id, result in messages.items():
+            frame = self.ldf.get_frame(id)
 
-                missing = (time.time_ns() / 1000 - result.ts_us) > 1000 * 1000
-                self.add_row(f"{id:02x} {frame.publisher.name} {data.hex(' ')}", 4 if missing else 3)
-                for k, v in decoded.items():
-                    s = [f"{v:>3}"]
-                    if v != decoded_raw[k]:
-                        s.append(f"{decoded_raw[k]:>3}") 
-                    s.append(f"0x{decoded_raw[k]:02x}")
+            if id not in self.tables:
+                table = DataTable()
+                table.show_header = False
+                table.add_columns("Signal", "Logical", "physical dec", "Physical hex")
+                table.add_rows([[signal.name] for _, signal in frame.signal_map])
+                table.cursor_type = "row"
+                table.zebra_stripes = True
+                # table.display = False
 
-                    self.add_row(f' {k.rjust(longest_signal)}: {" ".join(s)}')
+                w = Widget()
+                w.styles.height = "auto"
+                self.mount(w)
 
-            self.stdscr.refresh()
-            time.sleep(0.05)
+                label = Label()
+                label.can_focus = True
 
-    def add_row(self, text, color=0):
-        self.stdscr.addstr(self.row, 0, str(text), curses.color_pair(color))
-        self.row += 1
+                w.mount(label)
+                w.mount(table)
 
-def app(stdscr):
+                self.labels[id] = label
+                self.tables[id] = table
+
+            table = self.tables[id]
+
+            data = bytes(result.data)
+            frame = self.ldf.get_frame(id)
+            decoded = frame.decode(data)
+            decoded_raw = frame.decode_raw(data)
+
+            self.labels[id].update(
+                f'0x{id:02x} {frame.name} [blue]{data.hex(" ").upper()}[/]'
+            )
+
+            if table.display:
+                for row, (k, v) in enumerate(decoded.items()):
+                    key = f"{id}-{row}"
+                    if self.cache.get(key, None) != decoded_raw:
+                        table.update_cell_at((row, 1), v)
+                        table.update_cell_at((row, 2), decoded_raw[k])
+                        table.update_cell_at((row, 3), hex(decoded_raw[k]))
+                        self.cache[key] = decoded_raw
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser()
+    p.add_argument("ldf_path")
+    p.add_argument("device")
+    args = p.parse_args()
+
     ldf = ldfparser.parse_ldf(path=args.ldf_path)
-    
+
     plin = PLIN(interface=args.device)
     plin.start(mode=PLINMode.SLAVE, baudrate=ldf.get_baudrate())
-    plin.set_id_filter(bytearray([0xff] * 8))
+    plin.set_id_filter(bytearray([0xFF] * 8))
 
-    PlinMonitor(stdscr, ldf, plin).run()
-
-
-def main():
-    try:
-        curses.wrapper(app)
-    except KeyboardInterrupt:
-        pass
-
-if __name__ == '__main__':
-    main()
+    app = PlinMonitor()
+    app.run()

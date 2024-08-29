@@ -7,11 +7,12 @@ authors = ["Daniel Trnka <daniel.trnka@gmail.com>"]
 packages = [{include = "plin_monitor.py"}]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.8.1"
 ldfparser = "^0.25.0"
 plin-linux = "^0.0.3"
 
 
+textual = "^0.78.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
