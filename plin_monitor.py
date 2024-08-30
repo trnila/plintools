@@ -29,9 +29,14 @@ class PlinMonitor(App[None]):
         Binding(Keys.Escape, "quit", "quit"),
     )
 
-    def __init__(self):
+    def __init__(self, ldf: ldfparser.LDF, plin: PLIN):
         super().__init__()
         self.toggle_all_signals = False
+        self.plin = plin
+        self.ldf = ldf
+        self.tables = {}
+        self.labels = {}
+        self.cache = {}
 
     def action_toggle_signal(self):
         table = self.focused.parent.query_one("DataTable")
@@ -45,14 +50,31 @@ class PlinMonitor(App[None]):
     def compose(self) -> ComposeResult:
         yield Footer()
 
+        for frame in ldf.frames:
+            table = DataTable()
+            table.show_header = False
+            table.add_columns("Signal", "Logical", "Physical dec", "Physical hex")
+            table.add_rows([[signal.name] for _, signal in frame.signal_map])
+            table.cursor_type = "row"
+            table.zebra_stripes = True
+            table.display = False
+
+            w = Widget()
+            w.styles.height = "auto"
+            self.mount(w)
+
+            label = Label(f"0x{frame.frame_id:02x} {frame.name}")
+            label.can_focus = True
+
+            w.mount(label)
+            w.mount(table)
+
+            self.labels[frame.frame_id] = label
+            self.tables[frame.frame_id] = table
+
         self.bg_task = asyncio.create_task(to_thread(self.pump_frames))
 
     def pump_frames(self):
-        self.plin = plin
-        self.ldf = ldf
-        self.tables = {}
-        self.labels = {}
-        self.cache = {}
         try:
             while True:
                 frames = {}
@@ -71,34 +93,13 @@ class PlinMonitor(App[None]):
 
     def update_frames(self, messages):
         for id, result in messages.items():
-            frame = self.ldf.get_frame(id)
-
-            if id not in self.tables:
-                table = DataTable()
-                table.show_header = False
-                table.add_columns("Signal", "Logical", "physical dec", "Physical hex")
-                table.add_rows([[signal.name] for _, signal in frame.signal_map])
-                table.cursor_type = "row"
-                table.zebra_stripes = True
-                # table.display = False
-
-                w = Widget()
-                w.styles.height = "auto"
-                self.mount(w)
-
-                label = Label()
-                label.can_focus = True
-
-                w.mount(label)
-                w.mount(table)
-
-                self.labels[id] = label
-                self.tables[id] = table
-
+            try:
+                frame = self.ldf.get_frame(id)
+            except LookupError:
+                continue
             table = self.tables[id]
 
             data = bytes(result.data)
-            frame = self.ldf.get_frame(id)
             decoded = frame.decode(data)
             decoded_raw = frame.decode_raw(data)
 
@@ -128,5 +129,5 @@ if __name__ == "__main__":
     plin.start(mode=PLINMode.SLAVE, baudrate=ldf.get_baudrate())
     plin.set_id_filter(bytearray([0xFF] * 8))
 
-    app = PlinMonitor()
+    app = PlinMonitor(ldf, plin)
     app.run()
