@@ -3,9 +3,8 @@ from asyncio import events
 import contextvars
 import functools
 from textual.keys import Keys
-from textual.widget import Widget
 from textual.app import App, ComposeResult, Binding
-from textual.widgets import Footer, DataTable, Label
+from textual.widgets import Footer, DataTable, Label, Static
 from plin.device import PLIN, PLINMessage
 from plin.enums import PLINMode, PLINFrameErrorFlag
 import ldfparser
@@ -20,6 +19,34 @@ async def to_thread(func, /, *args, **kwargs):
     ctx = contextvars.copy_context()
     func_call = functools.partial(ctx.run, func, *args, **kwargs)
     return await loop.run_in_executor(None, func_call)
+
+
+class FrameWidget(Static):
+    def __init__(self, frame: ldfparser.LinFrame):
+        super().__init__()
+        self.frame = frame
+
+    def on_click(self):
+        table = self.query_one("DataTable")
+        table.display = not table.display
+
+    def compose(self) -> ComposeResult:
+        table = DataTable()
+        table.show_header = False
+        table.add_column("Signal")
+        table.add_column("Logical", width=50)
+        table.add_column("Physical dec")
+        table.add_column("Physical hex")
+        table.add_rows([[signal.name] for _, signal in self.frame.signal_map])
+        table.cursor_type = "row"
+        table.zebra_stripes = True
+        table.display = False
+
+        label = Label(f"0x{self.frame.frame_id:02x} {self.frame.name}")
+        label.can_focus = True
+
+        yield label
+        yield table
 
 
 class PlinMonitor(App[None]):
@@ -37,7 +64,6 @@ class PlinMonitor(App[None]):
         self.plin = plin
         self.ldf = ldf
         self.tables = {}
-        self.labels = {}
         self.cache = {}
 
     def action_toggle_signal(self):
@@ -46,36 +72,16 @@ class PlinMonitor(App[None]):
 
     def action_toggle_all_signals(self):
         for table in self.tables.values():
-            table.display = self.toggle_all_signals
+            table.query_one("DataTable").display = self.toggle_all_signals
         self.toggle_all_signals = not self.toggle_all_signals
 
     def compose(self) -> ComposeResult:
         yield Footer()
 
         for frame in ldf.frames:
-            table = DataTable()
-            table.show_header = False
-            table.add_column("Signal")
-            table.add_column("Logical", width=50)
-            table.add_column("Physical dec")
-            table.add_column("Physical hex")
-            table.add_rows([[signal.name] for _, signal in frame.signal_map])
-            table.cursor_type = "row"
-            table.zebra_stripes = True
-            table.display = False
-
-            w = Widget()
-            w.styles.height = "auto"
-            self.mount(w)
-
-            label = Label(f"0x{frame.frame_id:02x} {frame.name}")
-            label.can_focus = True
-
-            w.mount(label)
-            w.mount(table)
-
-            self.labels[frame.frame_id] = label
-            self.tables[frame.frame_id] = table
+            widget = FrameWidget(frame)
+            self.tables[frame.frame_id] = widget
+            yield widget
 
         self.bg_task = asyncio.create_task(to_thread(self.pump_frames))
 
@@ -94,7 +100,7 @@ class PlinMonitor(App[None]):
             frame = self.ldf.get_frame(received_frame.id)
         except LookupError:
             return
-        table = self.tables[received_frame.id]
+        widget = self.tables[received_frame.id]
 
         data = bytes(received_frame.data)
         decoded = frame.decode(data)
@@ -105,10 +111,11 @@ class PlinMonitor(App[None]):
         if received_frame.flags:
             payload = f"[red]{str(PLINFrameErrorFlag(received_frame.flags))}[/]"
 
-        self.labels[received_frame.id].update(
+        widget.query_one("Label").update(
             f"0x{received_frame.id:02x} {frame.name} {payload}"
         )
 
+        table = widget.query_one("DataTable")
         if table.display:
             for row, (k, v) in enumerate(decoded.items()):
                 key = f"{received_frame.id}-{row}"
