@@ -6,12 +6,13 @@ from textual.keys import Keys
 from textual.widget import Widget
 from textual.app import App, ComposeResult, Binding
 from textual.widgets import Footer, DataTable, Label
-from plin.device import PLIN
-from plin.enums import PLINMode
+from plin.device import PLIN, PLINMessage
+from plin.enums import PLINMode, PLINFrameErrorFlag
 import ldfparser
 import time
 import argparse
 import asyncio
+import os
 
 
 async def to_thread(func, /, *args, **kwargs):
@@ -77,44 +78,41 @@ class PlinMonitor(App[None]):
     def pump_frames(self):
         try:
             while True:
-                frames = {}
-                while True:
-                    result = self.plin.read(block=False)
-                    if not result:
-                        break
-
-                    result.ts_us = int(time.time_ns() / 1000)
-                    frames[result.id] = result
-
-                self.call_from_thread(self.update_frames, frames)
-                time.sleep(0.05)
+                frame = os.read(plin.fd, PLINMessage.buffer_length)
+                frame = PLINMessage.from_buffer_copy(frame)
+                frame.ts_us = int(time.time_ns() / 1000)
+                self.call_from_thread(self.update_frame, frame)
         except Exception as e:
             self._handle_exception(e)
 
-    def update_frames(self, messages):
-        for id, result in messages.items():
-            try:
-                frame = self.ldf.get_frame(id)
-            except LookupError:
-                continue
-            table = self.tables[id]
+    def update_frame(self, received_frame: PLINMessage):
+        try:
+            frame = self.ldf.get_frame(received_frame.id)
+        except LookupError:
+            return
+        table = self.tables[received_frame.id]
 
-            data = bytes(result.data)
-            decoded = frame.decode(data)
-            decoded_raw = frame.decode_raw(data)
+        data = bytes(received_frame.data)
+        decoded = frame.decode(data)
+        decoded_raw = frame.decode_raw(data)
 
-            self.labels[id].update(
-                f'0x{id:02x} {frame.name} [blue]{data.hex(" ").upper()}[/]'
-            )
+        payload = f'[blue]{data.hex(" ").upper()}[/]'
 
-            if table.display:
-                for row, (k, v) in enumerate(decoded.items()):
-                    key = f"{id}-{row}"
-                    if self.cache.get(key, None) != decoded_raw:
-                        table.update_cell_at((row, 1), v)
-                        table.update_cell_at((row, 2), decoded_raw[k])
-                        table.update_cell_at((row, 3), hex(decoded_raw[k]))
-                        self.cache[key] = decoded_raw
+        if received_frame.flags:
+            payload = f"[red]{str(PLINFrameErrorFlag(received_frame.flags))}[/]"
+
+        self.labels[received_frame.id].update(
+            f"0x{received_frame.id:02x} {frame.name} {payload}"
+        )
+
+        if table.display:
+            for row, (k, v) in enumerate(decoded.items()):
+                key = f"{received_frame.id}-{row}"
+                if self.cache.get(key, None) != decoded_raw:
+                    table.update_cell_at((row, 1), v)
+                    table.update_cell_at((row, 2), decoded_raw[k])
+                    table.update_cell_at((row, 3), hex(decoded_raw[k]))
+                    self.cache[key] = decoded_raw
 
 
 if __name__ == "__main__":
