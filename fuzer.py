@@ -5,6 +5,7 @@ import ldfparser
 import time
 import argparse
 import random
+import sys
 from plin.enums import (
     PLINFrameChecksumType,
     PLINFrameDirection,
@@ -13,6 +14,7 @@ from plin.enums import (
 p = argparse.ArgumentParser()
 p.add_argument("ldf_path")
 p.add_argument("device")
+p.add_argument("--schedule-table", "-s")
 args = p.parse_args()
 
 
@@ -55,6 +57,7 @@ def fuzz(frame_id: int):
 
 master_frames = []
 for schedule_id, table in enumerate(ldf.get_schedule_tables()):
+    print(table.name)
     for item in table.schedule:
         if isinstance(item, ldfparser.schedule.LinFrameEntry):
             frame = ldf.get_frame(item.frame.frame_id)
@@ -64,8 +67,12 @@ for schedule_id, table in enumerate(ldf.get_schedule_tables()):
                     if isinstance(frame.publisher, ldfparser.node.LinMaster)
                     else PLINFrameDirection.SUBSCRIBER_AUTO_LEN
                 )
-                if direction != PLINFrameDirection.PUBLISHER:
-                    continue
+
+                # if frame.frame_id != x:
+                #    continue
+
+                # if direction != PLINFrameDirection.SUBSCRIBER_AUTO_LEN:
+                #    continue
                 data = fuzz(frame.frame_id)
                 plin.set_frame_entry(
                     frame.frame_id,
@@ -77,14 +84,26 @@ for schedule_id, table in enumerate(ldf.get_schedule_tables()):
                 plin.add_unconditional_schedule_slot(
                     schedule_id, int(item.delay * 1000), frame.frame_id
                 )
-                print(hex(frame.frame_id), frame.name)
 
                 if direction == PLINFrameDirection.PUBLISHER:
                     master_frames.append(frame.frame_id)
-                    print("add ", hex(frame.frame_id))
 
-    plin.start_schedule(schedule_id)
-    break
+                sender = "M" if direction == PLINFrameDirection.PUBLISHER else "S"
+                print(f"  {frame.frame_id:02X} {sender} {frame.name}")
+
+schedule_id = 0
+if args.schedule_table:
+    found = [
+        i
+        for i, table in enumerate(ldf.get_schedule_tables())
+        if table.name.lower() == args.schedule_table.lower()
+    ]
+    if not found:
+        print(f'Schedule table "{args.schedule_table}" not found.', file=sys.stderr)
+        exit(1)
+    schedule_id = found[0]
+
+plin.start_schedule(schedule_id)
 
 master_frames = list(set(master_frames))
 
