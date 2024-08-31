@@ -54,7 +54,10 @@ class PlinMonitor(App[None]):
         for frame in ldf.frames:
             table = DataTable()
             table.show_header = False
-            table.add_columns("Signal", "Logical", "Physical dec", "Physical hex")
+            table.add_column("Signal")
+            table.add_column("Logical", width=50)
+            table.add_column("Physical dec")
+            table.add_column("Physical hex")
             table.add_rows([[signal.name] for _, signal in frame.signal_map])
             table.cursor_type = "row"
             table.zebra_stripes = True
