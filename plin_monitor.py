@@ -28,6 +28,7 @@ class PlinMonitor(App[None]):
         Binding(Keys.ControlSpace, "toggle_all_signals()", "toggle all signals"),
         Binding("space", "toggle_signal", "toggle signals"),
         Binding(Keys.Escape, "quit", "quit"),
+        Binding("q", "quit", "quit"),
     )
 
     def __init__(self, ldf: ldfparser.LDF, plin: PLIN):
