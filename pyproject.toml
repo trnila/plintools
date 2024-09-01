@@ -1,10 +1,9 @@
 [tool.poetry]
-name = "plin_monitor"
+name = "plintools"
 version = "0.1.0"
 description = "Decode LIN frames on peak lin"
 authors = ["Daniel Trnka <daniel.trnka@gmail.com>"]
 #readme = "README.md"
-packages = [{include = "plin_monitor.py"}]
 
 [tool.poetry.dependencies]
 python = "^3.8.1"
@@ -18,4 +17,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-plin_monitor = "plin_monitor:main"
+plintools = "plintools.__main__:main"

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from asyncio import events
 import contextvars
 import functools
@@ -50,7 +49,7 @@ class FrameWidget(Static):
 
 
 class PlinMonitor(App[None]):
-    CSS_PATH = "plin_monitor.tcss"
+    CSS_PATH = "monitor.tcss"
     BINDINGS = (
         Binding(Keys.ControlSpace, "toggle_all_signals()", "toggle all signals"),
         Binding("space", "toggle_signal", "toggle signals"),
@@ -78,7 +77,7 @@ class PlinMonitor(App[None]):
     def compose(self) -> ComposeResult:
         yield Footer()
 
-        for frame in ldf.frames:
+        for frame in self.ldf.frames:
             widget = FrameWidget(frame)
             self.tables[frame.frame_id] = widget
             yield widget
@@ -88,7 +87,7 @@ class PlinMonitor(App[None]):
     def pump_frames(self):
         try:
             while True:
-                frame = os.read(plin.fd, PLINMessage.buffer_length)
+                frame = os.read(self.plin.fd, PLINMessage.buffer_length)
                 frame = PLINMessage.from_buffer_copy(frame)
                 frame.ts_us = int(time.time_ns() / 1000)
                 self.call_from_thread(self.update_frame, frame)
@@ -126,17 +125,17 @@ class PlinMonitor(App[None]):
                     self.cache[key] = decoded_raw
 
 
-if __name__ == "__main__":
-    p = argparse.ArgumentParser()
-    p.add_argument("ldf_path")
-    p.add_argument("device")
-    args = p.parse_args()
+class MonitorCommand:
+    def parser(self, parser: argparse.ArgumentParser):
+        parser.add_argument("ldf_path")
+        parser.add_argument("device")
 
-    ldf = ldfparser.parse_ldf(path=args.ldf_path)
+    def run(self, args):
+        ldf = ldfparser.parse_ldf(path=args.ldf_path)
 
-    plin = PLIN(interface=args.device)
-    plin.start(mode=PLINMode.SLAVE, baudrate=ldf.get_baudrate())
-    plin.set_id_filter(bytearray([0xFF] * 8))
+        plin = PLIN(interface=args.device)
+        plin.start(mode=PLINMode.SLAVE, baudrate=ldf.get_baudrate())
+        plin.set_id_filter(bytearray([0xFF] * 8))
 
-    app = PlinMonitor(ldf, plin)
-    app.run()
+        app = PlinMonitor(ldf, plin)
+        app.run()
