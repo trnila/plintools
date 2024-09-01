@@ -15,3 +15,10 @@ Generates random signals according to LDF file.
 ```
 $ plintools gen my.ldf /dev/plin0
 ```
+
+## Plotjuggler UDP streamer
+Streams decoded signals into [PlotJuggler](https://github.com/facontidavide/PlotJuggler) for graph plotting.
+
+```
+$ plintools plotjuggler my.ldf /dev/plin0
+```
