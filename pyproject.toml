@@ -3,7 +3,7 @@ name = "plintools"
 version = "0.1.0"
 description = "Decode LIN frames on peak lin"
 authors = ["Daniel Trnka <daniel.trnka@gmail.com>"]
-#readme = "README.md"
+readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.8.1"
