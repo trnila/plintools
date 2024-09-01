@@ -10,6 +10,14 @@ $ pip install git+https://github.com/trnila/plintools
 $ plintools monitor my.ldf /dev/plin0
 ```
 
+## Dump signals
+```
+$ plintools dump my.ldf /dev/plin0 --frame MY_FRAME --frame 0x12
+$ plintools dump my.ldf /dev/plin0 --node sensor_1 --node sensor_2
+$ plintools dump my.ldf /dev/plin0 --master
+$ plintools dump my.ldf /dev/plin0 --no-signals
+```
+
 ## Signal generator
 Generates random signals according to LDF file.
 ```
