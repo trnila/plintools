@@ -27,6 +27,9 @@ class DumpCommand:
         parser.add_argument(
             "--node", "-n", action="append", help="Show frames from this node"
         )
+        parser.add_argument(
+            "--no-signals", action="store_true", help="Show only frames"
+        )
 
     def get_longest_signal(self, ldf: ldfparser.LDF) -> int:
         max_found = 0
@@ -114,29 +117,32 @@ class DumpCommand:
                 print(
                     f"{(received.ts_us - ts_offset_us) // 1000:>8} 0x{frame.frame_id:02x} [blue]{bytes(received.data).hex(' ').upper()}[/] {frame.publisher.name.ljust(pub_width)} [yellow]{frame.name}[/]"
                 )
-                if received.flags:
-                    print(f"[red]{escape(str(PLINFrameErrorFlag(received.flags)))}[/]")
-                else:
-                    table = Table()
-                    table.add_column(style="cyan", width=signal_width)
-                    table.add_column(
-                        justify="right", style="magenta", width=logical_width
-                    )
-                    table.add_column(justify="right", style="green", width=10)
-                    table.add_column(justify="right", style="green", width=10)
-                    table.show_header = False
-                    table.border_style = None
-                    table.show_edge = False
-                    table.row_styles = ["dim", ""]
-
-                    for name, value in signals.items():
-                        table.add_row(
-                            name,
-                            str(value),
-                            str(signals_raw[name]),
-                            str(hex(signals_raw[name])),
+                if not args.no_signals:
+                    if received.flags:
+                        print(
+                            f"[red]{escape(str(PLINFrameErrorFlag(received.flags)))}[/]"
                         )
-                    print(table)
+                    else:
+                        table = Table()
+                        table.add_column(style="cyan", width=signal_width)
+                        table.add_column(
+                            justify="right", style="magenta", width=logical_width
+                        )
+                        table.add_column(justify="right", style="green", width=10)
+                        table.add_column(justify="right", style="green", width=10)
+                        table.show_header = False
+                        table.border_style = None
+                        table.show_edge = False
+                        table.row_styles = ["dim", ""]
+
+                        for name, value in signals.items():
+                            table.add_row(
+                                name,
+                                str(value),
+                                str(signals_raw[name]),
+                                str(hex(signals_raw[name])),
+                            )
+                        print(table)
             except Exception as e:
                 print(f"[red]Error: {escape(str(e))}[/]")
             except KeyboardInterrupt:
