@@ -3,6 +3,7 @@ import argparse
 from plintools.monitor import MonitorCommand
 from plintools.gen import GenCommand
 from plintools.plotjuggler_streamer import PlotjugglerCommand
+from plintools.dump import DumpCommand
 
 
 def main():
@@ -16,6 +17,7 @@ def main():
         class_to_command(c): c
         for c in [
             MonitorCommand(),
+            DumpCommand(),
             GenCommand(),
             PlotjugglerCommand(),
         ]
