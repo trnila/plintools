@@ -102,27 +102,29 @@ class PlinMonitor(App[None]):
         widget = self.tables[received_frame.id]
 
         data = bytes(received_frame.data)
-        decoded = frame.decode(data)
-        decoded_raw = frame.decode_raw(data)
-
         payload = f'[blue]{data.hex(" ").upper()}[/]'
+        try:
+            decoded = frame.decode(data)
+            decoded_raw = frame.decode_raw(data)
 
-        if received_frame.flags:
-            payload = f"[red]{str(PLINFrameErrorFlag(received_frame.flags))}[/]"
+            if received_frame.flags:
+                payload = f"[red]{str(PLINFrameErrorFlag(received_frame.flags))}[/]"
+
+            table = widget.query_one("DataTable")
+            if table.display:
+                for row, (k, v) in enumerate(decoded.items()):
+                    key = f"{received_frame.id}-{row}"
+                    if self.cache.get(key, None) != decoded_raw:
+                        table.update_cell_at((row, 1), v)
+                        table.update_cell_at((row, 2), decoded_raw[k])
+                        table.update_cell_at((row, 3), hex(decoded_raw[k]))
+                        self.cache[key] = decoded_raw
+        except ValueError as e:
+            payload = f"[red]{e}[/]"
 
         widget.query_one("Label").update(
             f"0x{received_frame.id:02x} {frame.name} {payload}"
         )
-
-        table = widget.query_one("DataTable")
-        if table.display:
-            for row, (k, v) in enumerate(decoded.items()):
-                key = f"{received_frame.id}-{row}"
-                if self.cache.get(key, None) != decoded_raw:
-                    table.update_cell_at((row, 1), v)
-                    table.update_cell_at((row, 2), decoded_raw[k])
-                    table.update_cell_at((row, 3), hex(decoded_raw[k]))
-                    self.cache[key] = decoded_raw
 
 
 class MonitorCommand:
