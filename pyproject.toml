@@ -1,20 +1,19 @@
-[tool.poetry]
+[project]
 name = "plintools"
 version = "0.1.0"
 description = "Decode LIN frames on peak lin"
-authors = ["Daniel Trnka <daniel.trnka@gmail.com>"]
+authors = [{ name = "Daniel Trnka", email = "daniel.trnka@gmail.com" }]
+requires-python = ">=3.8.1,<4"
 readme = "README.md"
+dependencies = [
+    "ldfparser>=0.25.0,<0.26",
+    "plin-linux>=0.0.3,<0.0.4",
+    "textual>=0.78.0,<0.79",
+]
 
-[tool.poetry.dependencies]
-python = "^3.8.1"
-ldfparser = "^0.25.0"
-plin-linux = "^0.0.3"
-
-
-textual = "^0.78.0"
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.scripts]
+[project.scripts]
 plintools = "plintools.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
